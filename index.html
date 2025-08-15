@@ -66,21 +66,7 @@ button.convert {
 <div id="output" class="output"></div>
 
 <script>
-// IPA dictionary
-const ldoceDict = {
-  "time":"taɪm","moves":"muːvz","in":"ɪn","spirals":"ˈspaɪrəlz",
-  "we":"wiː","are":"ɑː","flotsam":"ˈflɒtsəm","on":"ɒn",
-  "sea":"siː","and":"ænd","repeats":"rɪˈpiːts","its":"ɪts",
-  "tragedies":"ˈtrædʒədiz","time’s":"taɪmz"
-};
-function getIPA(line) {
-  return line.split(/\s+/).map(w=>{
-    const clean = w.replace(/[.,;!?]/g,"").toLowerCase();
-    return ldoceDict[clean] || w;
-  }).join(" ");
-}
-
-// Convert + Translate
+// Convert + Translate (IPA + Georgian translation from API)
 async function convertAndTranslate() {
   const text = document.getElementById("text").value.trim();
   if (!text) return alert("Please enter text.");
@@ -95,13 +81,15 @@ async function convertAndTranslate() {
     if (data.error) return alert("Error: " + data.error);
 
     const lines = text.split(/\n/);
+    const ipaLines = data.ipa.split(/\n/);
     const translations = data.translation.split(/\n/);
     const outputDiv = document.getElementById("output");
     outputDiv.innerHTML = "";
 
     lines.forEach((line, idx) => {
-      const ipaLine = getIPA(line);
+      const ipaLine = ipaLines[idx] || "";
       const kaLine = translations[idx] || "";
+
       const div = document.createElement("div");
       div.className = "line";
       div.innerHTML = `
