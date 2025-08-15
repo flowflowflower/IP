@@ -29,10 +29,7 @@ button {
   margin-left: 5px;
   border: none;
 }
-button.convert {
-  background: #e53935;
-  color: #fff;
-}
+button.convert { background: #e53935; color: #fff; }
 .output {
   background: rgba(255,255,255,0.05);
   padding: 10px;
@@ -40,13 +37,12 @@ button.convert {
   white-space: pre-wrap;
   margin-top: 10px;
 }
-.line {
-  margin-bottom: 6px;
-}
-.en { color: #f5f5f5; font-weight: 300; font-size: 16px; }
-.ipa { color: #fff; font-weight: 600; font-size: 16px; }
-.ka { color: #e0e0e0; font-weight: 400; font-size: 16px; }
-.controls { margin-bottom: 15px; }
+.line { margin-bottom: 6px; }
+.en  { color: #f5f5f5; font-weight: 300; font-size: 16px; }
+.ipa { color: #fff;     font-weight: 600; font-size: 16px; }
+.ka  { color: #e0e0e0;  font-weight: 400; font-size: 16px; }
+.controls { margin-bottom: 15px; display: flex; flex-wrap: wrap; gap: 8px; align-items:center; }
+.status { opacity: .8; font-size: 14px; margin-left: 8px; }
 </style>
 </head>
 <body>
@@ -56,21 +52,23 @@ button.convert {
 <textarea id="text" placeholder="აკრიფე ინგლისური ტექსტი აქ..."></textarea><br>
 
 <div class="controls">
-<label>ხმის მოდელები: <select id="voiceSelect"></select></label>
-<label>სიჩქარე: <input type="number" id="rate" min="0.5" max="2" step="0.1" value="1"></label>
-<button onclick="playAll()">▶</button>
-<button onclick="stopAll()">⏹</button>
-<button class="convert" onclick="convertAndTranslate()">Convert</button>
+  <label>ხმის მოდელები: <select id="voiceSelect"></select></label>
+  <label>სიჩქარე: <input type="number" id="rate" min="0.5" max="2" step="0.1" value="1"></label>
+  <button onclick="playAll()">▶</button>
+  <button onclick="stopAll()">⏹</button>
+  <button class="convert" onclick="convertAndTranslate()">Convert</button>
+  <span id="status" class="status"></span>
 </div>
 
 <div id="output" class="output"></div>
 
 <script>
-// Convert + Translate (IPA + Georgian translation from API)
+// --- Convert + Translate (IPA + KA from server) ---
 async function convertAndTranslate() {
   const text = document.getElementById("text").value.trim();
-  if (!text) return alert("Please enter text.");
+  if (!text) { alert("გთხოვ, ჩაწერე ტექსტი."); return; }
 
+  setStatus("დამუშავება...");
   try {
     const res = await fetch("/.netlify/functions/translate", {
       method: "POST",
@@ -78,34 +76,52 @@ async function convertAndTranslate() {
       body: JSON.stringify({ text })
     });
     const data = await res.json();
-    if (data.error) return alert("Error: " + data.error);
 
-    const lines = text.split(/\n/);
-    const ipaLines = data.ipa.split(/\n/);
-    const translations = data.translation.split(/\n/);
+    if (data.error) {
+      setStatus("");
+      alert("შეცდომა: " + data.error);
+      return;
+    }
+
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+    const ipaArr = Array.isArray(data.ipa) ? data.ipa : [];
+    const kaArr  = Array.isArray(data.translation) ? data.translation : [];
+
     const outputDiv = document.getElementById("output");
     outputDiv.innerHTML = "";
 
     lines.forEach((line, idx) => {
-      const ipaLine = ipaLines[idx] || "";
-      const kaLine = translations[idx] || "";
+      const ipaLine = ipaArr[idx] || "";
+      const kaLine  = kaArr[idx]  || "";
 
       const div = document.createElement("div");
       div.className = "line";
       div.innerHTML = `
-        <span class="en">${line}</span>
-        <button onclick="playLine('${line.replace(/'/g,"\\'")}')">▶</button><br>
-        <span class="ipa">${ipaLine}</span><br>
-        <span class="ka">${kaLine}</span>
+        <span class="en">${escapeHtml(line)}</span>
+        <button onclick="playLine('${escapeAttr(line)}')">▶</button><br>
+        <span class="ipa">${escapeHtml(ipaLine)}</span><br>
+        <span class="ka">${escapeHtml(kaLine)}</span>
       `;
       outputDiv.appendChild(div);
     });
+
+    setStatus("მზადაა ✅");
   } catch (err) {
+    setStatus("");
     alert("Translation failed: " + err.message);
   }
 }
 
-// TTS setup
+// --- Helpers: escape to avoid HTML injection in innerHTML ---
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+function escapeAttr(s) {
+  return s.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+}
+function setStatus(msg){ document.getElementById("status").textContent = msg; }
+
+// --- TTS ---
 let synth = window.speechSynthesis;
 let voices = [];
 function populateVoiceList() {
@@ -114,24 +130,23 @@ function populateVoiceList() {
   select.innerHTML = "";
   voices.forEach((voice, i)=>{
     const option = document.createElement('option');
-    option.textContent = voice.name + " ("+voice.lang+")";
+    option.textContent = `${voice.name} (${voice.lang})`;
     option.value = i;
     select.appendChild(option);
   });
 }
 populateVoiceList();
-if(speechSynthesis.onvoiceschanged !== undefined) speechSynthesis.onvoiceschanged = populateVoiceList;
+if (speechSynthesis.onvoiceschanged !== undefined) speechSynthesis.onvoiceschanged = populateVoiceList;
 
 function playLine(text) {
   const utter = new SpeechSynthesisUtterance(text);
   const select = document.getElementById('voiceSelect');
   utter.voice = voices[select.value];
-  utter.rate = parseFloat(document.getElementById('rate').value);
+  utter.rate  = parseFloat(document.getElementById('rate').value);
   synth.speak(utter);
 }
 function playAll() {
-  const txt = document.getElementById("text").value;
-  playLine(txt);
+  playLine(document.getElementById("text").value);
 }
 function stopAll() {
   synth.cancel();
